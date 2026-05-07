@@ -13,7 +13,7 @@ export interface LocationData {
   address: string;
   latitude: number;
   longitude: number;
-  size: number; // size in meters (radius from center)
+  size: number; // square side length in meters
 }
 
 const LeafletMapPicker = dynamic(() => import('./LeafletMapPicker'), {
@@ -24,8 +24,9 @@ export default function LocationPicker({ onLocationSelect, isLoading }: Location
   const [address, setAddress] = useState('');
   const [size, setSize] = useState(5000); // 5km default
   const [error, setError] = useState('');
+  const [isLocating, setIsLocating] = useState(false);
+  const [hasPickedLocation, setHasPickedLocation] = useState(false);
   const [mapCenter, setMapCenter] = useState<LatLngTuple>([49.03, -118.44]);
-  const [pinnedLocation, setPinnedLocation] = useState<LatLngTuple | null>(null);
 
   const geocodeAddress = async (query: string) => {
     const response = await fetch(
@@ -61,7 +62,7 @@ export default function LocationPicker({ onLocationSelect, isLoading }: Location
       const lat = parseFloat(location.lat);
       const lon = parseFloat(location.lon);
       setMapCenter([lat, lon]);
-      setPinnedLocation([lat, lon]);
+      setHasPickedLocation(true);
       setAddress(location.display_name);
     } catch (err) {
       setError('Failed to search address');
@@ -71,8 +72,8 @@ export default function LocationPicker({ onLocationSelect, isLoading }: Location
 
   const handleMapPick = async (coords: LatLngTuple) => {
     setError('');
-    setPinnedLocation(coords);
     setMapCenter(coords);
+    setHasPickedLocation(true);
 
     try {
       const resolvedAddress = await reverseGeocode(coords[0], coords[1]);
@@ -83,19 +84,52 @@ export default function LocationPicker({ onLocationSelect, isLoading }: Location
     }
   };
 
+  const handleUseGps = () => {
+    if (!navigator.geolocation) {
+      setError('GPS is not available in this browser');
+      return;
+    }
+
+    setError('');
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const coords: LatLngTuple = [position.coords.latitude, position.coords.longitude];
+        setMapCenter(coords);
+        setHasPickedLocation(true);
+
+        try {
+          const resolvedAddress = await reverseGeocode(coords[0], coords[1]);
+          setAddress(resolvedAddress);
+        } catch {
+          setAddress(`${coords[0].toFixed(5)}, ${coords[1].toFixed(5)}`);
+        }
+        setIsLocating(false);
+      },
+      (geoError) => {
+        setError(`Could not get GPS location: ${geoError.message}`);
+        setIsLocating(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+      }
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!address.trim() && !pinnedLocation) {
+    if (!address.trim() && !hasPickedLocation) {
       setError('Enter an address or pin a location on the map');
       return;
     }
 
     try {
       let selectedAddress = address;
-      let latitude = pinnedLocation?.[0];
-      let longitude = pinnedLocation?.[1];
+      let latitude: number | undefined = hasPickedLocation ? mapCenter[0] : undefined;
+      let longitude: number | undefined = hasPickedLocation ? mapCenter[1] : undefined;
 
       if (latitude === undefined || longitude === undefined) {
         const data = await geocodeAddress(address);
@@ -124,7 +158,7 @@ export default function LocationPicker({ onLocationSelect, isLoading }: Location
   return (
     <div className="rounded-2xl border border-white/40 bg-white/90 backdrop-blur-xl shadow-[0_20px_60px_-20px_rgba(13,148,136,0.45)] p-6 w-full max-w-md">
       <h2 className="text-2xl font-semibold mb-1 text-slate-900">Pick Location</h2>
-      <p className="text-sm text-slate-600 mb-4">Search by address or click directly on the map.</p>
+      <p className="text-sm text-slate-600 mb-4">Search, use GPS, or click map. Drag the center dot to move and the blue square handle to resize.</p>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium mb-2 text-slate-800">Address</label>
@@ -145,14 +179,27 @@ export default function LocationPicker({ onLocationSelect, isLoading }: Location
             >
               Find
             </button>
+            <button
+              type="button"
+              onClick={handleUseGps}
+              disabled={isLoading || isLocating}
+              className="px-3 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium disabled:bg-gray-400 whitespace-nowrap"
+            >
+              {isLocating ? 'Locating...' : 'Use GPS'}
+            </button>
           </div>
         </div>
 
-        <LeafletMapPicker center={mapCenter} pin={pinnedLocation} onPick={handleMapPick} />
+        <LeafletMapPicker
+          center={mapCenter}
+          sizeMeters={size}
+          onCenterChange={handleMapPick}
+          onSizeChange={setSize}
+        />
 
-        {pinnedLocation && (
+        {hasPickedLocation && (
           <div className="rounded-lg bg-teal-50 border border-teal-100 px-3 py-2 text-xs text-teal-900">
-            Pinned: {pinnedLocation[0].toFixed(5)}, {pinnedLocation[1].toFixed(5)}
+            Center: {mapCenter[0].toFixed(5)}, {mapCenter[1].toFixed(5)}
           </div>
         )}
 
