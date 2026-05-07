@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createLayeredTerrainSTL, GenerateBody, sanitizeLayerSettings } from '@/lib/terrain';
+import { createLayeredTerrainSTL, createRealTerrainSTL, GenerateBody, sanitizeLayerSettings } from '@/lib/terrain';
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +29,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const stl = createLayeredTerrainSTL(layers);
+    let stl: ArrayBuffer;
+    let generatorMode = 'real-dem';
+    try {
+      stl = await createRealTerrainSTL(latitude, longitude, size, layers);
+    } catch (demError) {
+      console.error('DEM generation failed, using fallback terrain:', demError);
+      stl = createLayeredTerrainSTL(layers);
+      generatorMode = 'local-fallback';
+    }
 
     return new NextResponse(stl, {
       headers: {
@@ -37,7 +45,7 @@ export async function POST(request: NextRequest) {
         'Content-Disposition': `attachment; filename="map-${latitude}-${longitude}.stl"`,
         'X-Map-Shape': shape,
         'X-Map-Size-Meters': String(size),
-        'X-Generator-Mode': 'local-fallback',
+        'X-Generator-Mode': generatorMode,
       },
     });
   } catch (error) {

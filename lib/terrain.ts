@@ -22,6 +22,8 @@ export const DEFAULT_LAYERS: LayerSettings = {
   highLayerHeightMm: 12,
 };
 
+const METERS_PER_LAT_DEGREE = 111320;
+
 export function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
@@ -49,6 +51,169 @@ function normalizedTerrain(x: number, y: number): number {
   const slope = (x + y) * 0.25;
   const bowl = -0.18 * (x * x + y * y);
   return clamp((ridge * 0.55 + slope + bowl + 1) / 2, 0, 1);
+}
+
+function metersToLatDegrees(meters: number): number {
+  return meters / METERS_PER_LAT_DEGREE;
+}
+
+function metersToLonDegrees(meters: number, latitude: number): number {
+  const cosLat = Math.cos((latitude * Math.PI) / 180);
+  const safeCos = Math.max(0.15, Math.abs(cosLat));
+  return meters / (METERS_PER_LAT_DEGREE * safeCos);
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    result.push(items.slice(i, i + size));
+  }
+  return result;
+}
+
+interface SamplePoint {
+  lat: number;
+  lon: number;
+}
+
+async function fetchSrtmElevations(points: SamplePoint[]): Promise<number[]> {
+  const batches = chunk(points, 95);
+  const elevations: number[] = [];
+
+  for (const batch of batches) {
+    const locations = batch
+      .map((point) => `${point.lat.toFixed(6)},${point.lon.toFixed(6)}`)
+      .join('|');
+
+    const url = `https://api.opentopodata.org/v1/srtm90m?locations=${encodeURIComponent(locations)}`;
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`DEM request failed (${response.status})`);
+    }
+
+    const data = await response.json();
+    if (!Array.isArray(data.results)) {
+      throw new Error('DEM response missing results array');
+    }
+
+    for (const result of data.results) {
+      const elevation = typeof result.elevation === 'number' ? result.elevation : NaN;
+      elevations.push(elevation);
+    }
+  }
+
+  return elevations;
+}
+
+function fillMissingElevations(values: number[]): number[] {
+  const valid = values.filter((value) => Number.isFinite(value));
+  const fallback = valid.length > 0 ? valid[0] : 0;
+  return values.map((value) => (Number.isFinite(value) ? value : fallback));
+}
+
+export async function createRealTerrainSTL(
+  centerLat: number,
+  centerLon: number,
+  sizeMeters: number,
+  layers: LayerSettings
+): Promise<ArrayBuffer> {
+  const grid = 32;
+  const halfMeters = sizeMeters / 2;
+  const halfLatDeg = metersToLatDegrees(halfMeters);
+  const halfLonDeg = metersToLonDegrees(halfMeters, centerLat);
+
+  const points: SamplePoint[] = [];
+  for (let row = 0; row < grid; row++) {
+    const tRow = row / (grid - 1);
+    const lat = centerLat + halfLatDeg - tRow * 2 * halfLatDeg;
+    for (let col = 0; col < grid; col++) {
+      const tCol = col / (grid - 1);
+      const lon = centerLon - halfLonDeg + tCol * 2 * halfLonDeg;
+      points.push({ lat, lon });
+    }
+  }
+
+  const rawElevations = await fetchSrtmElevations(points);
+  const elevations = fillMissingElevations(rawElevations);
+
+  const minElevation = Math.min(...elevations);
+  const maxElevation = Math.max(...elevations);
+  const rangeElevation = Math.max(1, maxElevation - minElevation);
+
+  const printWidthMm = 160;
+  const baseThicknessMm = 2;
+  const reliefMm = clamp(rangeElevation / 25, 6, Math.max(12, layers.highLayerHeightMm * 2));
+  const printDepthMm = printWidthMm;
+
+  const verticesTop: number[][] = [];
+  const verticesBottom: number[][] = [];
+
+  for (let row = 0; row < grid; row++) {
+    const y = (row / (grid - 1)) * printDepthMm - printDepthMm / 2;
+    for (let col = 0; col < grid; col++) {
+      const x = (col / (grid - 1)) * printWidthMm - printWidthMm / 2;
+      const elevation = elevations[row * grid + col] as number;
+      const normalized = (elevation - minElevation) / rangeElevation;
+      const z = baseThicknessMm + normalized * reliefMm;
+
+      verticesTop.push([x, y, z]);
+      verticesBottom.push([x, y, 0]);
+    }
+  }
+
+  const triangles: number[][] = [];
+  const idx = (i: number, j: number) => j * grid + i;
+  const bottomOffset = verticesTop.length;
+
+  for (let j = 0; j < grid - 1; j++) {
+    for (let i = 0; i < grid - 1; i++) {
+      const a = idx(i, j);
+      const b = idx(i + 1, j);
+      const c = idx(i, j + 1);
+      const d = idx(i + 1, j + 1);
+
+      triangles.push([a, b, c], [b, d, c]);
+      triangles.push(
+        [bottomOffset + a, bottomOffset + c, bottomOffset + b],
+        [bottomOffset + b, bottomOffset + c, bottomOffset + d]
+      );
+    }
+  }
+
+  for (let i = 0; i < grid - 1; i++) {
+    const t0 = idx(i, 0);
+    const t1 = idx(i + 1, 0);
+    const b0 = bottomOffset + t0;
+    const b1 = bottomOffset + t1;
+    triangles.push([t0, b0, t1], [t1, b0, b1]);
+  }
+
+  for (let i = 0; i < grid - 1; i++) {
+    const t0 = idx(i, grid - 1);
+    const t1 = idx(i + 1, grid - 1);
+    const b0 = bottomOffset + t0;
+    const b1 = bottomOffset + t1;
+    triangles.push([t1, b0, t0], [b1, b0, t1]);
+  }
+
+  for (let j = 0; j < grid - 1; j++) {
+    const t0 = idx(0, j);
+    const t1 = idx(0, j + 1);
+    const b0 = bottomOffset + t0;
+    const b1 = bottomOffset + t1;
+    triangles.push([t1, b0, t0], [b1, b0, t1]);
+  }
+
+  for (let j = 0; j < grid - 1; j++) {
+    const t0 = idx(grid - 1, j);
+    const t1 = idx(grid - 1, j + 1);
+    const b0 = bottomOffset + t0;
+    const b1 = bottomOffset + t1;
+    triangles.push([t0, b0, t1], [t1, b0, b1]);
+  }
+
+  const vertices = [...verticesTop, ...verticesBottom];
+  return writeBinarySTL(vertices, triangles, 'Real DEM terrain STL');
 }
 
 export function createLayeredTerrainSTL(layers: LayerSettings): ArrayBuffer {

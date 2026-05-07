@@ -125,11 +125,17 @@ export default function ModelViewer({ modelUrl }: ModelViewerProps) {
       url,
       (geometry) => {
         geometry.computeVertexNormals();
-        geometry.center();
 
-        const box = new THREE.Box3().setFromBufferAttribute(geometry.attributes.position as THREE.BufferAttribute);
-        const size = box.getSize(new THREE.Vector3());
-        const maxAxis = Math.max(size.x, size.y, size.z) || 1;
+        const initialBox = new THREE.Box3().setFromBufferAttribute(
+          geometry.attributes.position as THREE.BufferAttribute
+        );
+        const initialSize = initialBox.getSize(new THREE.Vector3());
+        const initialCenter = initialBox.getCenter(new THREE.Vector3());
+
+        // Keep STL base at z=0 and center in x/y before rotating to Three.js Y-up.
+        geometry.translate(-initialCenter.x, -initialCenter.y, -initialBox.min.z);
+
+        const maxAxis = Math.max(initialSize.x, initialSize.y) || 1;
         const targetSize = 140;
         const scale = targetSize / maxAxis;
 
@@ -140,8 +146,9 @@ export default function ModelViewer({ modelUrl }: ModelViewerProps) {
         });
 
         const mesh = new THREE.Mesh(geometry, material);
+        mesh.rotation.x = -Math.PI / 2;
         mesh.scale.setScalar(scale);
-        mesh.position.y = 8;
+        mesh.position.y = 0;
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         scene.add(mesh);
