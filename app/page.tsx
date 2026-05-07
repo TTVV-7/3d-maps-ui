@@ -106,12 +106,17 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 py-8 px-4">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_15%_20%,#ccfbf1_0,#ecfeff_35%,#f1f5f9_70%)] py-10 px-4">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">3D Map Generator</h1>
-          <p className="text-lg text-gray-600">Create 3D printable topographic maps of any location</p>
+          <p className="inline-flex items-center rounded-full bg-teal-100 text-teal-800 text-xs font-semibold tracking-wide px-3 py-1 mb-4">
+            TERRAIN WORKBENCH
+          </p>
+          <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-3 tracking-tight">3D Terrain Studio</h1>
+          <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+            Pick an address or pin any point on the map, then generate printable terrain with AMS elevation bands.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -130,16 +135,16 @@ export default function Home() {
             />
 
             {selectedLocation && (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-bold mb-3">Selected Location</h3>
+              <div className="rounded-2xl border border-white/40 bg-white/90 backdrop-blur-xl shadow-[0_20px_60px_-20px_rgba(2,132,199,0.45)] p-6">
+                <h3 className="text-lg font-semibold mb-3 text-slate-900">Selected Location</h3>
                 <div className="space-y-2 text-sm">
-                  <p className="text-gray-600">
+                  <p className="text-slate-700">
                     <span className="font-semibold">Address:</span> {selectedLocation.address.split(',')[0]}
                   </p>
-                  <p className="text-gray-600">
+                  <p className="text-slate-700">
                     <span className="font-semibold">Latitude:</span> {selectedLocation.latitude.toFixed(4)}
                   </p>
-                  <p className="text-gray-600">
+                  <p className="text-slate-700">
                     <span className="font-semibold">Longitude:</span> {selectedLocation.longitude.toFixed(4)}
                   </p>
                 </div>
@@ -167,12 +172,12 @@ export default function Home() {
 
           {/* Right Panel - 3D Viewer */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-2xl font-bold mb-4">3D Preview</h2>
+            <div className="rounded-2xl border border-white/40 bg-white/90 backdrop-blur-xl shadow-[0_30px_80px_-24px_rgba(15,118,110,0.45)] p-6">
+              <h2 className="text-2xl font-semibold mb-4 text-slate-900">3D Preview</h2>
               <ModelViewer modelUrl={modelUrl} />
               {isLoading && (
                 <div className="mt-4 text-center">
-                  <p className="text-gray-500">Generating 3D model... This may take a minute.</p>
+                  <p className="text-slate-600">Generating 3D model... This may take a minute.</p>
                   <div className="mt-2 flex justify-center">
                     <div className="animate-spin h-6 w-6 border-t-2 border-b-2 border-blue-500 rounded-full"></div>
                   </div>
@@ -183,10 +188,11 @@ export default function Home() {
         </div>
 
         {/* Footer Info */}
-        <div className="mt-12 bg-white rounded-lg shadow-md p-6">
-          <h3 className="text-xl font-bold mb-3">How It Works</h3>
-          <ul className="space-y-2 text-gray-700">
+        <div className="mt-12 rounded-2xl border border-white/40 bg-white/90 backdrop-blur-xl shadow-[0_20px_60px_-20px_rgba(15,118,110,0.28)] p-6">
+          <h3 className="text-xl font-semibold mb-3 text-slate-900">How It Works</h3>
+          <ul className="space-y-2 text-slate-700">
             <li>✓ Enter a location (address or coordinates)</li>
+            <li>✓ Or pin a location directly on the map</li>
             <li>✓ Choose the map size and shape</li>
             <li>✓ Set blue/green/white elevation thresholds for AMS</li>
             <li>✓ Click "Generate Map" to create a 3D model</li>

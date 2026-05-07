@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 
 interface ModelViewerProps {
   modelUrl: string | null;
@@ -10,52 +12,62 @@ interface ModelViewerProps {
 export default function ModelViewer({ modelUrl }: ModelViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const modelRef = useRef<THREE.Group | null>(null);
+  const modelRef = useRef<THREE.Object3D | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
     // Scene setup
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf0f0f0);
+    scene.background = new THREE.Color(0xeaf7ff);
     sceneRef.current = scene;
 
     // Camera setup
     const camera = new THREE.PerspectiveCamera(
-      75,
+      60,
       containerRef.current.clientWidth / containerRef.current.clientHeight,
       0.1,
-      1000
+      4000
     );
-    camera.position.set(0, 50, 50);
+    camera.position.set(140, 130, 140);
     camera.lookAt(0, 0, 0);
-    cameraRef.current = camera;
 
     // Renderer setup
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     containerRef.current.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+    controls.target.set(0, 10, 0);
+    controlsRef.current = controls;
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(50, 50, 50);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.1);
+    directionalLight.position.set(120, 160, 60);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
     scene.add(directionalLight);
 
+    const rimLight = new THREE.DirectionalLight(0xb3e8ff, 0.6);
+    rimLight.position.set(-100, 90, -120);
+    scene.add(rimLight);
+
     // Ground plane
-    const groundGeometry = new THREE.PlaneGeometry(200, 200);
+    const groundGeometry = new THREE.PlaneGeometry(600, 600);
     const groundMaterial = new THREE.MeshStandardMaterial({
-      color: 0xcccccc,
-      roughness: 0.8,
+      color: 0xd6edf7,
+      roughness: 0.95,
+      metalness: 0,
     });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
@@ -65,12 +77,7 @@ export default function ModelViewer({ modelUrl }: ModelViewerProps) {
     // Animation loop
     const animate = () => {
       requestAnimationFrame(animate);
-
-      // Rotate model
-      if (modelRef.current) {
-        modelRef.current.rotation.y += 0.002;
-      }
-
+      controls.update();
       renderer.render(scene, camera);
     };
     animate();
@@ -83,6 +90,7 @@ export default function ModelViewer({ modelUrl }: ModelViewerProps) {
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     };
 
     window.addEventListener('resize', handleResize);
@@ -93,89 +101,63 @@ export default function ModelViewer({ modelUrl }: ModelViewerProps) {
       if (containerRef.current && renderer.domElement.parentNode === containerRef.current) {
         containerRef.current.removeChild(renderer.domElement);
       }
+      controls.dispose();
       renderer.dispose();
     };
   }, []);
 
   useEffect(() => {
-    if (!sceneRef.current || !modelUrl) return;
+    if (!sceneRef.current) return;
 
     if (modelRef.current) {
       sceneRef.current.remove(modelRef.current);
       modelRef.current = null;
     }
 
+    if (!modelUrl) return;
+
     loadSTL(sceneRef.current, modelUrl);
   }, [modelUrl]);
 
   const loadSTL = (scene: THREE.Scene, url: string) => {
-    const xhr = new XMLHttpRequest();
-    xhr.responseType = 'arraybuffer';
-    xhr.onload = () => {
-      const geometry = parseSTL(xhr.response);
-      geometry.computeVertexNormals();
-      geometry.center();
+    const loader = new STLLoader();
+    loader.load(
+      url,
+      (geometry) => {
+        geometry.computeVertexNormals();
+        geometry.center();
 
-      const material = new THREE.MeshStandardMaterial({
-        color: 0x4a90e2,
-        metalness: 0.3,
-        roughness: 0.4,
-      });
+        const box = new THREE.Box3().setFromBufferAttribute(geometry.attributes.position as THREE.BufferAttribute);
+        const size = box.getSize(new THREE.Vector3());
+        const maxAxis = Math.max(size.x, size.y, size.z) || 1;
+        const targetSize = 140;
+        const scale = targetSize / maxAxis;
 
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x0f766e,
+          metalness: 0.08,
+          roughness: 0.58,
+        });
 
-      const group = new THREE.Group();
-      group.add(mesh);
-      scene.add(group);
-      modelRef.current = group;
-    };
-    xhr.open('GET', url, true);
-    xhr.send();
-  };
-
-  const parseSTL = (arrayBuffer: ArrayBuffer): THREE.BufferGeometry => {
-    const view = new DataView(arrayBuffer);
-    // Binary STL format
-    const faces = view.getUint32(80, true);
-    const geometry = new THREE.BufferGeometry();
-    const vertices: number[] = [];
-    const normals: number[] = [];
-
-    let offset = 84;
-    for (let i = 0; i < faces; i++) {
-      const nx = view.getFloat32(offset, true);
-      offset += 4;
-      const ny = view.getFloat32(offset, true);
-      offset += 4;
-      const nz = view.getFloat32(offset, true);
-      offset += 4;
-
-      for (let j = 0; j < 3; j++) {
-        vertices.push(view.getFloat32(offset, true));
-        offset += 4;
-        vertices.push(view.getFloat32(offset, true));
-        offset += 4;
-        vertices.push(view.getFloat32(offset, true));
-        offset += 4;
-
-        normals.push(nx, ny, nz);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.scale.setScalar(scale);
+        mesh.position.y = 8;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+        modelRef.current = mesh;
+      },
+      undefined,
+      (error) => {
+        console.error('Failed to load STL:', error);
       }
-
-      offset += 2; // attribute byte count
-    }
-
-    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
-    geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
-
-    return geometry;
+    );
   };
 
   return (
     <div
       ref={containerRef}
-      className="w-full h-96 bg-gray-200 rounded-lg shadow-md border-2 border-gray-300 flex items-center justify-center"
+      className="w-full h-[28rem] bg-gradient-to-br from-cyan-100 to-slate-100 rounded-2xl shadow-md border border-cyan-200/70 flex items-center justify-center"
     >
       {!modelUrl && (
         <div className="text-center text-gray-500">
