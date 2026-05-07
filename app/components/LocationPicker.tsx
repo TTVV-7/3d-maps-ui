@@ -25,7 +25,7 @@ export default function LocationPicker({ onLocationSelect, isLoading }: Location
   const [size, setSize] = useState(5000); // 5km default
   const [error, setError] = useState('');
   const [isLocating, setIsLocating] = useState(false);
-  const [hasPickedLocation, setHasPickedLocation] = useState(false);
+  const [hasPickedLocation, setHasPickedLocation] = useState(true);
   const [mapCenter, setMapCenter] = useState<LatLngTuple>([49.03, -118.44]);
 
   const geocodeAddress = async (query: string) => {
@@ -121,18 +121,17 @@ export default function LocationPicker({ onLocationSelect, isLoading }: Location
     e.preventDefault();
     setError('');
 
-    if (!address.trim() && !hasPickedLocation) {
-      setError('Enter an address or pin a location on the map');
-      return;
-    }
-
     try {
-      let selectedAddress = address;
+      let selectedAddress = address.trim();
       let latitude: number | undefined = hasPickedLocation ? mapCenter[0] : undefined;
       let longitude: number | undefined = hasPickedLocation ? mapCenter[1] : undefined;
 
       if (latitude === undefined || longitude === undefined) {
-        const data = await geocodeAddress(address);
+        if (!selectedAddress) {
+          setError('Enter an address or move the map selection.');
+          return;
+        }
+        const data = await geocodeAddress(selectedAddress);
         if (data.length === 0) {
           setError('Address not found');
           return;
@@ -141,6 +140,10 @@ export default function LocationPicker({ onLocationSelect, isLoading }: Location
         latitude = parseFloat(location.lat);
         longitude = parseFloat(location.lon);
         selectedAddress = location.display_name;
+      }
+
+      if (!selectedAddress) {
+        selectedAddress = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
       }
 
       onLocationSelect({

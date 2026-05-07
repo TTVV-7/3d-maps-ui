@@ -105,6 +105,33 @@ async function fetchSrtmElevations(points: SamplePoint[]): Promise<number[]> {
   return elevations;
 }
 
+async function fetchOpenMeteoElevations(points: SamplePoint[]): Promise<number[]> {
+  const batches = chunk(points, 100);
+  const elevations: number[] = [];
+
+  for (const batch of batches) {
+    const latitudes = batch.map((point) => point.lat.toFixed(6)).join(',');
+    const longitudes = batch.map((point) => point.lon.toFixed(6)).join(',');
+
+    const url = `https://api.open-meteo.com/v1/elevation?latitude=${latitudes}&longitude=${longitudes}`;
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`Open-Meteo DEM request failed (${response.status})`);
+    }
+
+    const data = await response.json();
+    if (!Array.isArray(data.elevation)) {
+      throw new Error('Open-Meteo DEM response missing elevation array');
+    }
+
+    for (const value of data.elevation) {
+      elevations.push(typeof value === 'number' ? value : NaN);
+    }
+  }
+
+  return elevations;
+}
+
 function fillMissingElevations(values: number[]): number[] {
   const valid = values.filter((value) => Number.isFinite(value));
   const fallback = valid.length > 0 ? valid[0] : 0;
@@ -133,7 +160,18 @@ export async function createRealTerrainSTL(
     }
   }
 
-  const rawElevations = await fetchSrtmElevations(points);
+  let rawElevations: number[] = [];
+  try {
+    rawElevations = await fetchOpenMeteoElevations(points);
+  } catch (openMeteoError) {
+    console.error('Open-Meteo DEM failed, trying OpenTopoData:', openMeteoError);
+    rawElevations = await fetchSrtmElevations(points);
+  }
+
+  if (rawElevations.length !== points.length) {
+    throw new Error('DEM response size does not match sampled grid');
+  }
+
   const elevations = fillMissingElevations(rawElevations);
 
   const minElevation = Math.min(...elevations);

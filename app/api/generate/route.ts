@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createLayeredTerrainSTL, createRealTerrainSTL, GenerateBody, sanitizeLayerSettings } from '@/lib/terrain';
+import { createRealTerrainSTL, GenerateBody, sanitizeLayerSettings } from '@/lib/terrain';
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,15 +29,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    let stl: ArrayBuffer;
-    let generatorMode = 'real-dem';
-    try {
-      stl = await createRealTerrainSTL(latitude, longitude, size, layers);
-    } catch (demError) {
-      console.error('DEM generation failed, using fallback terrain:', demError);
-      stl = createLayeredTerrainSTL(layers);
-      generatorMode = 'local-fallback';
-    }
+    const stl = await createRealTerrainSTL(latitude, longitude, size, layers);
 
     return new NextResponse(stl, {
       headers: {
@@ -45,11 +37,16 @@ export async function POST(request: NextRequest) {
         'Content-Disposition': `attachment; filename="map-${latitude}-${longitude}.stl"`,
         'X-Map-Shape': shape,
         'X-Map-Size-Meters': String(size),
-        'X-Generator-Mode': generatorMode,
+        'X-Generator-Mode': 'real-dem',
       },
     });
   } catch (error) {
     console.error('Generation error:', error);
-    return NextResponse.json({ error: 'Failed to generate model' }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'Failed to generate model from real elevation data. Please try a smaller area or try again shortly.',
+      },
+      { status: 502 }
+    );
   }
 }

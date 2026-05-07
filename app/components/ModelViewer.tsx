@@ -15,6 +15,22 @@ export default function ModelViewer({ modelUrl }: ModelViewerProps) {
   const modelRef = useRef<THREE.Object3D | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
 
+  if (!modelUrl) {
+    return (
+      <div className="w-full h-[28rem] rounded-2xl border border-cyan-200/70 bg-[radial-gradient(circle_at_30%_30%,#ecfeff_0,#dbeafe_55%,#e2e8f0_100%)] shadow-md flex items-center justify-center">
+        <div className="text-center px-6 max-w-md">
+          <div className="mx-auto mb-4 h-12 w-12 rounded-xl bg-white/80 border border-cyan-200 flex items-center justify-center text-cyan-700 font-bold">
+            3D
+          </div>
+          <p className="text-slate-900 font-semibold text-lg">Terrain Preview Ready</p>
+          <p className="text-slate-600 text-sm mt-2">
+            Choose a location and click Generate Map to render a real-elevation terrain model.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   useEffect(() => {
     if (!containerRef.current) return;
 
