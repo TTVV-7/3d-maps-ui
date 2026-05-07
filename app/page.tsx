@@ -1,65 +1,152 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState } from 'react';
+import LocationPicker, { LocationData } from './components/LocationPicker';
+import ShapeSelector from './components/ShapeSelector';
+import ModelViewer from './components/ModelViewer';
+import ElevationLayers, { ElevationLayerSettings } from './components/ElevationLayers';
 
 export default function Home() {
+  const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
+  const [selectedShape, setSelectedShape] = useState<'square' | 'circle'>('square');
+  const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [layerSettings, setLayerSettings] = useState<ElevationLayerSettings>({
+    waterThreshold: 0.35,
+    snowThreshold: 0.78,
+    lowLayerHeightMm: 2,
+    midLayerHeightMm: 7,
+    highLayerHeightMm: 12,
+  });
+
+  const handleLocationSelect = async (location: LocationData) => {
+    setSelectedLocation(location);
+    setIsLoading(true);
+    setModelUrl(null);
+    setDownloadUrl(null);
+
+    try {
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          size: location.size,
+          shape: selectedShape,
+          layers: layerSettings,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate model');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      setModelUrl(url);
+      setDownloadUrl(url);
+    } catch (error) {
+      console.error('Error generating model:', error);
+      alert('Failed to generate model');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDownload = () => {
+    if (downloadUrl && selectedLocation) {
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `3d-map-ams-${selectedLocation.latitude.toFixed(2)}-${selectedLocation.longitude.toFixed(2)}.stl`;
+      link.click();
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 py-8 px-4">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">3D Map Generator</h1>
+          <p className="text-lg text-gray-600">Create 3D printable topographic maps of any location</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Panel - Controls */}
+          <div className="lg:col-span-1 space-y-6">
+            <LocationPicker onLocationSelect={handleLocationSelect} isLoading={isLoading} />
+            <ShapeSelector
+              selectedShape={selectedShape}
+              onShapeChange={setSelectedShape}
+              disabled={isLoading}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <ElevationLayers
+              value={layerSettings}
+              onChange={setLayerSettings}
+              disabled={isLoading}
+            />
+
+            {selectedLocation && (
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h3 className="text-lg font-bold mb-3">Selected Location</h3>
+                <div className="space-y-2 text-sm">
+                  <p className="text-gray-600">
+                    <span className="font-semibold">Address:</span> {selectedLocation.address.split(',')[0]}
+                  </p>
+                  <p className="text-gray-600">
+                    <span className="font-semibold">Latitude:</span> {selectedLocation.latitude.toFixed(4)}
+                  </p>
+                  <p className="text-gray-600">
+                    <span className="font-semibold">Longitude:</span> {selectedLocation.longitude.toFixed(4)}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {downloadUrl && (
+              <button
+                onClick={handleDownload}
+                className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                Download STL File
+              </button>
+            )}
+          </div>
+
+          {/* Right Panel - 3D Viewer */}
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-2xl font-bold mb-4">3D Preview</h2>
+              <ModelViewer modelUrl={modelUrl} />
+              {isLoading && (
+                <div className="mt-4 text-center">
+                  <p className="text-gray-500">Generating 3D model... This may take a minute.</p>
+                  <div className="mt-2 flex justify-center">
+                    <div className="animate-spin h-6 w-6 border-t-2 border-b-2 border-blue-500 rounded-full"></div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      </main>
+
+        {/* Footer Info */}
+        <div className="mt-12 bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-xl font-bold mb-3">How It Works</h3>
+          <ul className="space-y-2 text-gray-700">
+            <li>✓ Enter a location (address or coordinates)</li>
+            <li>✓ Choose the map size and shape</li>
+            <li>✓ Set blue/green/white elevation thresholds for AMS</li>
+            <li>✓ Click "Generate Map" to create a 3D model</li>
+            <li>✓ Preview the model in the 3D viewer</li>
+            <li>✓ Download the STL file for 3D printing</li>
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }
