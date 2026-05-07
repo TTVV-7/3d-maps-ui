@@ -76,11 +76,46 @@ interface SamplePoint {
   lon: number;
 }
 
+export interface TerrainDebugInfo {
+  source: 'open-meteo' | 'open-topo-data';
+  gridSize: number;
+  sampleCount: number;
+  minElevation: number;
+  maxElevation: number;
+  elevationRange: number;
+  durationMs: number;
+  upstreamErrors: string[];
+}
+
+export interface TerrainBuildResult {
+  stl: ArrayBuffer;
+  debug: TerrainDebugInfo;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  handler: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let index = 0;
+
+  async function worker() {
+    while (index < items.length) {
+      const current = index;
+      index += 1;
+      results[current] = await handler(items[current] as T);
+    }
+  }
+
+  const workers = Array.from({ length: Math.max(1, concurrency) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 async function fetchSrtmElevations(points: SamplePoint[]): Promise<number[]> {
   const batches = chunk(points, 95);
-  const elevations: number[] = [];
-
-  for (const batch of batches) {
+  const batchResults = await mapWithConcurrency(batches, 3, async (batch) => {
     const locations = batch
       .map((point) => `${point.lat.toFixed(6)},${point.lon.toFixed(6)}`)
       .join('|');
@@ -88,28 +123,25 @@ async function fetchSrtmElevations(points: SamplePoint[]): Promise<number[]> {
     const url = `https://api.opentopodata.org/v1/srtm90m?locations=${encodeURIComponent(locations)}`;
     const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) {
-      throw new Error(`DEM request failed (${response.status})`);
+      throw new Error(`OpenTopoData DEM request failed (${response.status})`);
     }
 
     const data = await response.json();
     if (!Array.isArray(data.results)) {
-      throw new Error('DEM response missing results array');
+      throw new Error('OpenTopoData DEM response missing results array');
     }
 
-    for (const result of data.results) {
-      const elevation = typeof result.elevation === 'number' ? result.elevation : NaN;
-      elevations.push(elevation);
-    }
-  }
+    return data.results.map((result: { elevation: number | null }) =>
+      typeof result.elevation === 'number' ? result.elevation : NaN
+    );
+  });
 
-  return elevations;
+  return batchResults.flat();
 }
 
 async function fetchOpenMeteoElevations(points: SamplePoint[]): Promise<number[]> {
   const batches = chunk(points, 100);
-  const elevations: number[] = [];
-
-  for (const batch of batches) {
+  const batchResults = await mapWithConcurrency(batches, 3, async (batch) => {
     const latitudes = batch.map((point) => point.lat.toFixed(6)).join(',');
     const longitudes = batch.map((point) => point.lon.toFixed(6)).join(',');
 
@@ -124,12 +156,10 @@ async function fetchOpenMeteoElevations(points: SamplePoint[]): Promise<number[]
       throw new Error('Open-Meteo DEM response missing elevation array');
     }
 
-    for (const value of data.elevation) {
-      elevations.push(typeof value === 'number' ? value : NaN);
-    }
-  }
+    return data.elevation.map((value: unknown) => (typeof value === 'number' ? value : NaN));
+  });
 
-  return elevations;
+  return batchResults.flat();
 }
 
 function fillMissingElevations(values: number[]): number[] {
@@ -143,8 +173,9 @@ export async function createRealTerrainSTL(
   centerLon: number,
   sizeMeters: number,
   layers: LayerSettings
-): Promise<ArrayBuffer> {
-  const grid = 32;
+): Promise<TerrainBuildResult> {
+  const startedAt = Date.now();
+  const grid = sizeMeters <= 12000 ? 26 : sizeMeters <= 24000 ? 22 : 18;
   const halfMeters = sizeMeters / 2;
   const halfLatDeg = metersToLatDegrees(halfMeters);
   const halfLonDeg = metersToLonDegrees(halfMeters, centerLat);
@@ -161,11 +192,19 @@ export async function createRealTerrainSTL(
   }
 
   let rawElevations: number[] = [];
+  let source: TerrainDebugInfo['source'] = 'open-meteo';
+  const upstreamErrors: string[] = [];
   try {
     rawElevations = await fetchOpenMeteoElevations(points);
   } catch (openMeteoError) {
-    console.error('Open-Meteo DEM failed, trying OpenTopoData:', openMeteoError);
-    rawElevations = await fetchSrtmElevations(points);
+    upstreamErrors.push(`open-meteo: ${String(openMeteoError)}`);
+    source = 'open-topo-data';
+    try {
+      rawElevations = await fetchSrtmElevations(points);
+    } catch (openTopoError) {
+      upstreamErrors.push(`open-topo-data: ${String(openTopoError)}`);
+      throw new Error(`Both DEM providers failed. ${upstreamErrors.join(' | ')}`);
+    }
   }
 
   if (rawElevations.length !== points.length) {
@@ -251,7 +290,21 @@ export async function createRealTerrainSTL(
   }
 
   const vertices = [...verticesTop, ...verticesBottom];
-  return writeBinarySTL(vertices, triangles, 'Real DEM terrain STL');
+  const stl = writeBinarySTL(vertices, triangles, 'Real DEM terrain STL');
+
+  return {
+    stl,
+    debug: {
+      source,
+      gridSize: grid,
+      sampleCount: points.length,
+      minElevation,
+      maxElevation,
+      elevationRange: rangeElevation,
+      durationMs: Date.now() - startedAt,
+      upstreamErrors,
+    },
+  };
 }
 
 export function createLayeredTerrainSTL(layers: LayerSettings): ArrayBuffer {

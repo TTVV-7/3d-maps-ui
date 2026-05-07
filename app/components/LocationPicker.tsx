@@ -20,6 +20,30 @@ const LeafletMapPicker = dynamic(() => import('./LeafletMapPicker'), {
   ssr: false,
 });
 
+const REFERENCE_LOCATIONS: Array<{ label: string; address: string; lat: number; lon: number; size: number }> = [
+  {
+    label: 'Grand Forks Downtown',
+    address: 'Downtown Grand Forks, British Columbia, Canada',
+    lat: 49.03044,
+    lon: -118.4396,
+    size: 9000,
+  },
+  {
+    label: 'Banff Core',
+    address: 'Banff, Alberta, Canada',
+    lat: 51.1784,
+    lon: -115.5708,
+    size: 12000,
+  },
+  {
+    label: 'Vancouver Harbour',
+    address: 'Vancouver Harbour, Vancouver, BC, Canada',
+    lat: 49.296,
+    lon: -123.109,
+    size: 10000,
+  },
+];
+
 export default function LocationPicker({ onLocationSelect, isLoading }: LocationPickerProps) {
   const [address, setAddress] = useState('');
   const [size, setSize] = useState(5000); // 5km default
@@ -117,6 +141,14 @@ export default function LocationPicker({ onLocationSelect, isLoading }: Location
     );
   };
 
+  const handleLoadReference = (ref: (typeof REFERENCE_LOCATIONS)[number]) => {
+    setError('');
+    setAddress(ref.address);
+    setMapCenter([ref.lat, ref.lon]);
+    setSize(ref.size);
+    setHasPickedLocation(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -199,6 +231,23 @@ export default function LocationPicker({ onLocationSelect, isLoading }: Location
           onCenterChange={handleMapPick}
           onSizeChange={setSize}
         />
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-2">Reference Examples</label>
+          <div className="flex flex-wrap gap-2">
+            {REFERENCE_LOCATIONS.map((ref) => (
+              <button
+                key={ref.label}
+                type="button"
+                onClick={() => handleLoadReference(ref)}
+                disabled={isLoading}
+                className="px-2.5 py-1.5 text-xs rounded-md border border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 disabled:opacity-50"
+              >
+                {ref.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {hasPickedLocation && (
           <div className="rounded-lg bg-teal-50 border border-teal-100 px-3 py-2 text-xs text-teal-900">

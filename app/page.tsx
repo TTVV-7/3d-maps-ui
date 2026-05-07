@@ -6,6 +6,19 @@ import ShapeSelector from './components/ShapeSelector';
 import ModelViewer from './components/ModelViewer';
 import ElevationLayers, { ElevationLayerSettings } from './components/ElevationLayers';
 
+interface GenerationDebugInfo {
+  traceId?: string;
+  mode?: string;
+  demSource?: string;
+  gridSize?: string;
+  sampleCount?: string;
+  elevationRange?: string;
+  durationMs?: string;
+  upstreamErrors?: string;
+  error?: string;
+  details?: string;
+}
+
 export default function Home() {
   const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
   const [selectedShape, setSelectedShape] = useState<'square' | 'circle'>('square');
@@ -13,6 +26,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [isPackingAms, setIsPackingAms] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [generationDebug, setGenerationDebug] = useState<GenerationDebugInfo | null>(null);
   const [layerSettings, setLayerSettings] = useState<ElevationLayerSettings>({
     waterThreshold: 0.35,
     snowThreshold: 0.78,
@@ -26,6 +40,7 @@ export default function Home() {
     setIsLoading(true);
     setModelUrl(null);
     setDownloadUrl(null);
+    setGenerationDebug(null);
 
     try {
       const response = await fetch('/api/generate', {
@@ -43,16 +58,32 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate model');
+        const failure = await response.json().catch(() => ({}));
+        setGenerationDebug({
+          traceId: failure.traceId,
+          error: failure.error || 'Generation failed',
+          details: failure.details,
+        });
+        throw new Error(failure.error || 'Failed to generate model');
       }
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       setModelUrl(url);
       setDownloadUrl(url);
+      setGenerationDebug({
+        traceId: response.headers.get('x-debug-trace-id') || undefined,
+        mode: response.headers.get('x-generator-mode') || undefined,
+        demSource: response.headers.get('x-debug-dem-source') || undefined,
+        gridSize: response.headers.get('x-debug-grid-size') || undefined,
+        sampleCount: response.headers.get('x-debug-sample-count') || undefined,
+        elevationRange: response.headers.get('x-debug-elevation-range') || undefined,
+        durationMs: response.headers.get('x-debug-duration-ms') || undefined,
+        upstreamErrors: response.headers.get('x-debug-upstream-errors') || undefined,
+      });
     } catch (error) {
       console.error('Error generating model:', error);
-      alert('Failed to generate model');
+      alert('Failed to generate model. Check debug panel for trace ID/details.');
     } finally {
       setIsLoading(false);
     }
@@ -200,6 +231,32 @@ export default function Home() {
             <li>✓ Download the STL file for 3D printing</li>
           </ul>
         </div>
+
+        {generationDebug && (
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900 mb-3">Generation Debug</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-slate-700">
+              <p><span className="font-semibold">Trace ID:</span> {generationDebug.traceId || '-'}</p>
+              <p><span className="font-semibold">Mode:</span> {generationDebug.mode || '-'}</p>
+              <p><span className="font-semibold">DEM Source:</span> {generationDebug.demSource || '-'}</p>
+              <p><span className="font-semibold">Grid Size:</span> {generationDebug.gridSize || '-'}</p>
+              <p><span className="font-semibold">Samples:</span> {generationDebug.sampleCount || '-'}</p>
+              <p><span className="font-semibold">Elevation Range:</span> {generationDebug.elevationRange || '-'}</p>
+              <p><span className="font-semibold">Duration (ms):</span> {generationDebug.durationMs || '-'}</p>
+            </div>
+            {generationDebug.error && (
+              <p className="mt-3 text-red-700 text-sm"><span className="font-semibold">Error:</span> {generationDebug.error}</p>
+            )}
+            {generationDebug.details && (
+              <p className="mt-1 text-red-600 text-xs break-words">{generationDebug.details}</p>
+            )}
+            {generationDebug.upstreamErrors && generationDebug.upstreamErrors !== '' && (
+              <p className="mt-3 text-amber-700 text-xs break-words">
+                <span className="font-semibold">Upstream Notes:</span> {generationDebug.upstreamErrors}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
