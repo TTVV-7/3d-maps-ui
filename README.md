@@ -6,6 +6,9 @@ A web application that lets you create and visualize 3D printable topographic ma
 
 ✨ **Location Picker** - Search for any address worldwide using OpenStreetMap geocoding
 📐 **Shape Selector** - Choose between square or circular map shapes
+⛰️ **Elevation Presets** - Coastal, Balanced, and Alpine threshold profiles
+🎨 **AMS Layer Controls** - Tune blue/green/white thresholds and layer heights
+📦 **AMS Multipart ZIP** - Export separate STL bodies per color band
 👀 **3D Viewer** - Preview your generated models with Three.js
 📥 **STL Export** - Download ready-to-print STL files
 🎨 **Modern UI** - Clean, responsive design with Tailwind CSS
@@ -67,13 +70,13 @@ const response = await fetch('http://localhost:5000/generate', {
 
 ### Python Backend Integration
 
-To integrate your existing `grand_forks_map.py` script:
+The app now supports a direct backend proxy for your terrain generator.
 
-1. Create a Python Flask/FastAPI server that wraps your script
-2. Expose a `/generate` endpoint that accepts:
-   - `latitude`, `longitude`, `size`, `shape` as JSON
-   - Returns binary STL file
-3. Deploy alongside the Next.js app or as a separate service
+1. Deploy your Python service and expose:
+   - `POST /generate` for single STL preview/download
+   - `POST /generate-multipart` for AMS ZIP export (`blue-low.stl`, `green-mid.stl`, `white-high.stl`)
+2. Set `PY_BACKEND_URL` in Vercel or `.env.local`
+3. If `PY_BACKEND_URL` is missing or unavailable, the app falls back to local procedural terrain generation
 
 ## Deployment on Vercel
 
@@ -119,6 +122,7 @@ Create `.env.local` for local development (optional):
 
 ```env
 NEXT_PUBLIC_BACKEND_URL=http://localhost:5000
+PY_BACKEND_URL=http://localhost:5000
 ```
 
 ## Using the App
@@ -130,13 +134,19 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:5000
 2. **Choose Shape**
    - Currently supports Square (Circle coming soon)
 
-3. **Generate Map**
+3. **Set Elevation Profile**
+   - Use presets (Coastal, Balanced, Alpine)
+   - Fine-tune thresholds for Blue/Green/White color bands
+   - Adjust per-band print heights in mm
+
+4. **Generate Map**
    - Click "Generate Map"
    - Wait for 3D model to render
 
-4. **View & Download**
+5. **View & Download**
    - Rotate model with mouse in 3D viewer
    - Click "Download STL File" to save for 3D printing
+   - Click "Download AMS Multipart ZIP" for separate color-band STLs
 
 ## API Routes
 

@@ -11,6 +11,7 @@ export default function Home() {
   const [selectedShape, setSelectedShape] = useState<'square' | 'circle'>('square');
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isPackingAms, setIsPackingAms] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [layerSettings, setLayerSettings] = useState<ElevationLayerSettings>({
     waterThreshold: 0.35,
@@ -66,6 +67,44 @@ export default function Home() {
     }
   };
 
+  const handleDownloadMultipart = async () => {
+    if (!selectedLocation) return;
+
+    setIsPackingAms(true);
+    try {
+      const response = await fetch('/api/generate-multipart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          latitude: selectedLocation.latitude,
+          longitude: selectedLocation.longitude,
+          size: selectedLocation.size,
+          shape: selectedShape,
+          layers: layerSettings,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate AMS multipart package');
+      }
+
+      const zipBlob = await response.blob();
+      const zipUrl = URL.createObjectURL(zipBlob);
+      const link = document.createElement('a');
+      link.href = zipUrl;
+      link.download = `3d-map-ams-parts-${selectedLocation.latitude.toFixed(2)}-${selectedLocation.longitude.toFixed(2)}.zip`;
+      link.click();
+      URL.revokeObjectURL(zipUrl);
+    } catch (error) {
+      console.error('Error generating AMS package:', error);
+      alert('Failed to generate AMS multipart package');
+    } finally {
+      setIsPackingAms(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 py-8 px-4">
       <div className="max-w-6xl mx-auto">
@@ -108,12 +147,21 @@ export default function Home() {
             )}
 
             {downloadUrl && (
-              <button
-                onClick={handleDownload}
-                className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                Download STL File
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={handleDownload}
+                  className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+                >
+                  Download STL File
+                </button>
+                <button
+                  onClick={handleDownloadMultipart}
+                  disabled={isPackingAms || isLoading}
+                  className="w-full bg-sky-600 hover:bg-sky-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+                >
+                  {isPackingAms ? 'Packaging AMS ZIP...' : 'Download AMS Multipart ZIP'}
+                </button>
+              </div>
             )}
           </div>
 

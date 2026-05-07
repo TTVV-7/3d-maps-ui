@@ -16,7 +16,37 @@ interface ElevationLayersProps {
   disabled?: boolean;
 }
 
+const PRESETS: Record<string, ElevationLayerSettings> = {
+  coastal: {
+    waterThreshold: 0.45,
+    snowThreshold: 0.86,
+    lowLayerHeightMm: 2,
+    midLayerHeightMm: 6,
+    highLayerHeightMm: 10,
+  },
+  balanced: {
+    waterThreshold: 0.35,
+    snowThreshold: 0.78,
+    lowLayerHeightMm: 2,
+    midLayerHeightMm: 7,
+    highLayerHeightMm: 12,
+  },
+  alpine: {
+    waterThreshold: 0.2,
+    snowThreshold: 0.62,
+    lowLayerHeightMm: 1.5,
+    midLayerHeightMm: 8,
+    highLayerHeightMm: 16,
+  },
+};
+
 export default function ElevationLayers({ value, onChange, disabled = false }: ElevationLayersProps) {
+  const applyPreset = (presetKey: string) => {
+    const preset = PRESETS[presetKey];
+    if (!preset) return;
+    onChange({ ...preset });
+  };
+
   const setValue = <K extends keyof ElevationLayerSettings>(key: K, val: number) => {
     const next = { ...value, [key]: val };
 
@@ -39,6 +69,36 @@ export default function ElevationLayers({ value, onChange, disabled = false }: E
       </p>
 
       <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-2">Preset</label>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => applyPreset('coastal')}
+              className="px-2 py-1 text-xs rounded-md border border-gray-300 hover:bg-blue-50 disabled:opacity-50"
+            >
+              Coastal
+            </button>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => applyPreset('balanced')}
+              className="px-2 py-1 text-xs rounded-md border border-gray-300 hover:bg-green-50 disabled:opacity-50"
+            >
+              Balanced
+            </button>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => applyPreset('alpine')}
+              className="px-2 py-1 text-xs rounded-md border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Alpine
+            </button>
+          </div>
+        </div>
+
         <div>
           <label className="block text-sm font-medium mb-2">
             Water/Blue Threshold: {(value.waterThreshold * 100).toFixed(0)}%
